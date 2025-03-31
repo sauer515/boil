@@ -82,12 +82,12 @@ export default function EventGraph({ events }: EventGraphProps) {
         // Aktualizujemy pozycję węzła start
         startNode.position.y = 100 + 150 * (nodesPerLevel.get(0) || 1) / 2;
         
-        // Tworzymy węzły dla każdego zdarzenia z uwzględnieniem poziomu
+        // Pozycje i węzły dla każdego zdarzenia
         const eventNodes: Node[] = events.map((event) => {
           const level = levelMap.get(event.name) || 0;
           const nodesInThisLevel = nodesPerLevel.get(level) || 1;
           
-          // Inicjalizujemy licznik pozycji dla tego poziomu jeśli potrzeba
+          // Inicjalizujemy licznik pozycji dla tego poziomu
           if (!currentPositionInLevel.has(level)) {
             currentPositionInLevel.set(level, 0);
           }
@@ -108,7 +108,7 @@ export default function EventGraph({ events }: EventGraphProps) {
           };
         });
         
-        // Aktualizujemy węzeł końcowy
+        // Węzeł końcowy
         const endNode: Node = {
           id: 'end',
           type: 'eventNode',
@@ -119,16 +119,16 @@ export default function EventGraph({ events }: EventGraphProps) {
           data: { name: 'KONIEC', duration: 0, earlyStart: totalDuration, earlyFinish: totalDuration, lateStart: totalDuration, lateFinish: totalDuration, timeReserve: 0 }
         };
         
-        // Łączymy wszystkie węzły
+        // Łączymy węzły
         const allNodes = [startNode, ...eventNodes, endNode];
         
-        // Tworzymy krawędzie na podstawie poprzedników
+        // Krawędzie na podstawie poprzedników
         const allEdges: Edge[] = [];
         
-        // Śledzenie, które węzły są poprzednikami innych
+        // Śledzimy, które węzły są poprzednikami innych
         const hasDependents = new Set<string>();
         
-        // Tworzymy krawędzie na podstawie zdefiniowanych poprzedników
+        // Łączenie krawędzi z poprzednikami
         events.forEach(event => {
           if (event.predecessors && event.predecessors.trim() !== '') {
             const predecessorsList = event.predecessors.split(',').map(p => p.trim());
@@ -143,7 +143,7 @@ export default function EventGraph({ events }: EventGraphProps) {
           }
         });
         
-        // Łączymy węzły bez poprzedników ze startem
+        // Łączenie z "start" i "end"
         events.forEach(event => {
           if (!event.predecessors || event.predecessors.trim() === '') {
             allEdges.push({
@@ -154,7 +154,6 @@ export default function EventGraph({ events }: EventGraphProps) {
           }
         });
         
-        // Łączymy węzły bez zależnych z końcem
         events.forEach(event => {
           if (!hasDependents.has(event.name)) {
             allEdges.push({
@@ -164,9 +163,63 @@ export default function EventGraph({ events }: EventGraphProps) {
             });
           }
         });
+
+        // Teraz obliczymy czasy (EarlyStart, EarlyFinish, LateStart, LateFinish, TimeReserve)
+        const earlyStartMap = new Map<string, number>();
+        const earlyFinishMap = new Map<string, number>();
+        const lateStartMap = new Map<string, number>();
+        const lateFinishMap = new Map<string, number>();
+
+        // 1. Obliczamy Early Start i Early Finish
+        events.forEach(event => {
+          const predecessorsList = predecessorsMap.get(event.name) || [];
+          const earliestFinish = predecessorsList.length > 0
+            ? Math.max(...predecessorsList.map(pred => earlyFinishMap.get(pred) || 0))
+            : 0;
+
+          earlyStartMap.set(event.name, earliestFinish);
+          earlyFinishMap.set(event.name, earliestFinish + event.duration);
+        });
+
+        // 2. Obliczamy Late Start i Late Finish
+        lateFinishMap.set('end', earlyFinishMap.get('end') || totalDuration);
+        lateStartMap.set('end', lateFinishMap.get('end') - 0);  // "duration" end node to 0
         
-        return { nodes: allNodes, edges: allEdges };
-      }, [events]);
+        events.reverse().forEach(event => {
+          const successors = events.filter(e => e.predecessors?.includes(event.name));
+          const latestStart = successors.length > 0
+            ? Math.min(...successors.map(succ => lateStartMap.get(succ.name) || Infinity))
+            : totalDuration;
+
+          lateFinishMap.set(event.name, latestStart);
+          lateStartMap.set(event.name, latestStart - event.duration);
+        });
+
+        // 3. Obliczamy rezerwę czasową
+        const eventNodesWithTimes: Node[] = eventNodes.map(event => {
+          const earlyStart = earlyStartMap.get(event.id) || 0;
+          const earlyFinish = earlyFinishMap.get(event.id) || 0;
+          const lateStart = lateStartMap.get(event.id) || 0;
+          const lateFinish = lateFinishMap.get(event.id) || 0;
+          const timeReserve = lateStart - earlyStart;
+
+          return {
+            ...event,
+            data: {
+              ...event.data,
+              earlyStart,
+              earlyFinish,
+              lateStart,
+              lateFinish,
+              timeReserve
+            }
+          };
+        });
+
+        const allNodesWithTimes = [startNode, ...eventNodesWithTimes, endNode];
+
+        return { nodes: allNodesWithTimes, edges: allEdges };
+      }, [events, totalDuration]);
 
   return (
     <div className="w-full h-[500px] border rounded-lg bg-white">
@@ -181,3 +234,4 @@ export default function EventGraph({ events }: EventGraphProps) {
     </div>
   );
 }
+
