@@ -168,16 +168,23 @@ export default function EventGraph({ events }: EventGraphProps) {
         return { nodes: allNodes, edges: allEdges };
       }, [events]);
 
-  return (
-    <div className="w-full h-[500px] border rounded-lg bg-white">
-      <ReactFlow 
-        nodes={nodes} 
-        edges={edges}
-        nodeTypes={{
-            eventNode: EventNode,
-        }}>
-        <Controls />
-      </ReactFlow>
-    </div>
-  );
+      return (
+        <div className="w-full h-[500px] border rounded-lg bg-white">
+          <ReactFlow 
+            nodes={nodes} 
+            edges={edges}
+            nodeTypes={{
+              eventNode: EventNode,
+            }}
+            edgeOptions={{
+              style: {
+                strokeWidth: 3,
+                stroke: '#ff00ff'
+              },
+              className: 'pixel-edge'
+            }}>
+            <Controls />
+          </ReactFlow>
+        </div>
+      );
 }

@@ -1,3 +1,39 @@
 @import "tailwindcss";
 @import "tailwindcss/utilities";
 
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+.pixel-node {
+  font-family: 'Press Start 2P', cursive;
+  image-rendering: pixelated;
+}
+
+.pixel-node-container {
+  border: 3px solid;
+  border-image: linear-gradient(
+    45deg, 
+    #ff00ff, 
+    #00ffff, 
+    #ffff00, 
+    #00ff00
+  ) 1;
+  image-rendering: pixelated;
+  box-shadow: 0 0 0 2px #000;
+  background-color: rgba(0, 0, 0, 0.1);
+}
+
+.pixel-edge {
+  stroke-width: 3;
+  stroke: #ff00ff;
+  stroke-dasharray: 5;
+  animation: pixelAnimation 2s infinite linear;
+}
+
+@keyframes pixelAnimation {
+  0% {
+    stroke-dashoffset: 0;
+  }
+  100% {
+    stroke-dashoffset: 20;
+  }
+}
