@@ -1,181 +1,312 @@
-import React from "react";
-import ReactFlow, { Node, Edge, Controls } from "reactflow";
+import React, { useMemo } from "react";
+import ReactFlow, { Node, Edge, Controls, Position } from "reactflow";
 import "reactflow/dist/style.css";
 import EventNode from "./EventNode";
-import { useMemo } from "react";
+
+interface EventData {
+  name: string;
+  duration: number;
+  predecessors?: string;
+  earlyStart: number;
+  earlyFinish: number;
+  lateStart: number;
+  lateFinish: number;
+  timeReserve: number;
+}
 
 interface EventGraphProps {
   events: {
     name: string;
     duration: number;
     predecessors?: string;
-    earlyStart?: number;
-    earlyFinish?: number;
-    lateStart?: number;
-    lateFinish?: number;
-    timeReserve?: number;
   }[];
 }
 
 export default function EventGraph({ events }: EventGraphProps) {
-    const totalDuration = useMemo(() => {
-        return events.reduce((sum, event) => sum + event.duration, 0);
-    }, [events]);
+  const { nodes, edges } = useMemo(() => {
+    // --- Initialization ---
+    const eventMap = new Map<string, EventData>();
+    const predecessorsMap = new Map<string, string[]>();
+    const successorsMap = new Map<string, string[]>();
 
-    const { nodes, edges } = useMemo(() => {
-        // Tworzymy węzły start i koniec
-        const startNode: Node = {
-          id: 'start',
-          type: 'eventNode',
-          position: { x: 50, y: 250 },
-          data: { name: 'START', duration: 0, earlyStart: 0, earlyFinish: 0, lateStart: 0, lateFinish: 0, timeReserve: 0 }
-        };
-        
-        const levelMap = new Map<string, number>();
-        const predecessorsMap = new Map<string, string[]>();
-        
-        // Inicjalizacja map
-        events.forEach(event => {
-          const predecessorsList = event.predecessors 
-            ? event.predecessors.trim().split(',').map(p => p.trim()).filter(p => p !== '')
-            : [];
-            
-          predecessorsMap.set(event.name, predecessorsList);
-          
-          if (predecessorsList.length === 0) {
-            // Węzły bez poprzedników są na poziomie 1 (poziom 0 to START)
-            levelMap.set(event.name, 1);
-          }
-        });
-        
-        // Ustalamy poziomy dla pozostałych węzłów
-        let changed = true;
-        while (changed) {
-          changed = false;
-          events.forEach(event => {
-            if (levelMap.has(event.name)) return;
-            
-            const predecessorsList = predecessorsMap.get(event.name) || [];
-            // Sprawdzamy czy wszystkie poprzedniki mają już przypisany poziom
-            if (predecessorsList.every(pred => levelMap.has(pred))) {
-              // Poziom węzła to maksymalny poziom poprzedników + 1
-              const maxPredLevel = Math.max(0, ...predecessorsList.map(pred => levelMap.get(pred) || 0));
-              levelMap.set(event.name, maxPredLevel + 1);
-              changed = true;
+    // Initialize maps and event data structure
+    events.forEach((event) => {
+      const predecessorsList = event.predecessors
+        ? event.predecessors
+            .trim()
+            .split(",")
+            .map((p) => p.trim())
+            .filter((p) => p !== "")
+        : [];
+      predecessorsMap.set(event.name, predecessorsList);
+      successorsMap.set(event.name, []); // Initialize successors list
+
+      // Initialize event data with default CPM values
+      eventMap.set(event.name, {
+        ...event,
+        earlyStart: 0,
+        earlyFinish: 0,
+        lateStart: Infinity, // Initialize late times to infinity
+        lateFinish: Infinity,
+        timeReserve: 0,
+      });
+    });
+
+    // Build successors map
+    events.forEach((event) => {
+      const predecessorsList = predecessorsMap.get(event.name) || [];
+      predecessorsList.forEach((predName) => {
+        if (successorsMap.has(predName)) {
+          successorsMap.get(predName)?.push(event.name);
+        } else {
+           // Handle case where predecessor might not be in the events list (error state)
+           console.warn(`Predecessor "${predName}" for event "${event.name}" not found.`);
+        }
+      });
+    });
+
+    // Add virtual START and END nodes to maps
+    const startNodeData: EventData = { name: 'START', duration: 0, earlyStart: 0, earlyFinish: 0, lateStart: 0, lateFinish: 0, timeReserve: 0 };
+    const endNodeData: EventData = { name: 'END', duration: 0, earlyStart: 0, earlyFinish: 0, lateStart: Infinity, lateFinish: Infinity, timeReserve: 0 };
+    eventMap.set('start', startNodeData);
+    eventMap.set('end', endNodeData);
+    predecessorsMap.set('start', []);
+    successorsMap.set('start', []);
+    predecessorsMap.set('end', []);
+    successorsMap.set('end', []);
+
+
+    // Connect nodes without predecessors to START
+    events.forEach(event => {
+        if ((predecessorsMap.get(event.name) || []).length === 0) {
+            successorsMap.get('start')?.push(event.name);
+            predecessorsMap.set(event.name, ['start']);
+        }
+    });
+
+    // Connect nodes without successors to END
+    const nodesWithNoSuccessors = events
+        .map(e => e.name)
+        .filter(name => (successorsMap.get(name) || []).length === 0);
+
+    nodesWithNoSuccessors.forEach(name => {
+        successorsMap.get(name)?.push('end');
+        predecessorsMap.get('end')?.push(name);
+    });
+
+
+    // --- Forward Pass (Calculate ES, EF) ---
+    const nodeQueue = ['start']; // Start with the initial node
+    const processedNodes = new Set<string>();
+
+    while (nodeQueue.length > 0) {
+        const currentName = nodeQueue.shift()!;
+        if (processedNodes.has(currentName)) continue; // Avoid reprocessing
+
+        const currentNodeData = eventMap.get(currentName)!;
+        const predecessors = predecessorsMap.get(currentName) || [];
+
+        // Calculate Early Start (ES)
+        let calculatedES = 0;
+        if (currentName !== 'start') {
+            calculatedES = Math.max(0, ...predecessors.map(predName => eventMap.get(predName)?.earlyFinish ?? 0));
+        }
+        currentNodeData.earlyStart = calculatedES;
+
+        // Calculate Early Finish (EF)
+        currentNodeData.earlyFinish = currentNodeData.earlyStart + currentNodeData.duration;
+
+        processedNodes.add(currentName);
+
+        // Add successors to the queue if all their predecessors are processed
+        const successors = successorsMap.get(currentName) || [];
+        successors.forEach(succName => {
+            const succPredecessors = predecessorsMap.get(succName) || [];
+            if (succPredecessors.every(pred => processedNodes.has(pred))) {
+                if (!nodeQueue.includes(succName)) { // Add only if not already queued
+                   nodeQueue.push(succName);
+                }
             }
-          });
+        });
+
+        // Ensure queue is sorted topologically (by ES primarily, then name for stability)
+        nodeQueue.sort((a, b) => {
+            const esA = eventMap.get(a)?.earlyStart ?? 0;
+            const esB = eventMap.get(b)?.earlyStart ?? 0;
+            if (esA !== esB) return esA - esB;
+            return a.localeCompare(b); // Fallback sort by name
+        });
+    }
+
+
+    // --- Backward Pass (Calculate LF, LS) ---
+    const endNode = eventMap.get('end')!;
+    const projectDuration = endNode.earlyFinish; // EF of END node is the project duration
+    endNode.lateFinish = projectDuration;
+    endNode.lateStart = projectDuration; // LF - duration (0 for END)
+
+    const reverseNodeQueue = ['end']; // Start with the final node
+    const reverseProcessedNodes = new Set<string>();
+
+    while (reverseNodeQueue.length > 0) {
+        const currentName = reverseNodeQueue.shift()!;
+         if (reverseProcessedNodes.has(currentName)) continue; // Avoid reprocessing
+
+        const currentNodeData = eventMap.get(currentName)!;
+        const successors = successorsMap.get(currentName) || [];
+
+        // Calculate Late Finish (LF)
+        let calculatedLF = projectDuration; // Default to project duration
+         if (currentName !== 'end') {
+            calculatedLF = Math.min(projectDuration, ...successors.map(succName => eventMap.get(succName)?.lateStart ?? projectDuration));
         }
-        
-        // Znajdujemy maksymalny poziom dla węzłów
-        const maxLevel = Math.max(...Array.from(levelMap.values()), 1);
-        levelMap.set('end', maxLevel + 1);
-        
-        // Liczymy ile węzłów jest na każdym poziomie
-        const nodesPerLevel = new Map<number, number>();
-        for (const level of levelMap.values()) {
-          nodesPerLevel.set(level, (nodesPerLevel.get(level) || 0) + 1);
+        currentNodeData.lateFinish = calculatedLF;
+
+
+        // Calculate Late Start (LS)
+        currentNodeData.lateStart = currentNodeData.lateFinish - currentNodeData.duration;
+
+        reverseProcessedNodes.add(currentName);
+
+        // Add predecessors to the queue if all their successors are processed
+        const predecessors = predecessorsMap.get(currentName) || [];
+        predecessors.forEach(predName => {
+            const predSuccessors = successorsMap.get(predName) || [];
+             if (predSuccessors.every(succ => reverseProcessedNodes.has(succ))) {
+                 if (!reverseNodeQueue.includes(predName)) {
+                    reverseNodeQueue.push(predName);
+                 }
+            }
+        });
+
+         // Ensure queue is sorted reverse topologically (by LF primarily, then name)
+        reverseNodeQueue.sort((a, b) => {
+            const lfA = eventMap.get(a)?.lateFinish ?? projectDuration;
+            const lfB = eventMap.get(b)?.lateFinish ?? projectDuration;
+            if (lfA !== lfB) return lfB - lfA; // Sort descending by LF
+            return b.localeCompare(a); // Fallback sort by name
+        });
+    }
+
+    // --- Calculate Time Reserve (Slack) ---
+    eventMap.forEach(nodeData => {
+        nodeData.timeReserve = nodeData.lateFinish - nodeData.earlyFinish;
+        // Handle potential floating point inaccuracies
+        if (Math.abs(nodeData.timeReserve) < 1e-9) {
+            nodeData.timeReserve = 0;
         }
-        
-        // Śledzimy aktualną pozycję dla każdego poziomu
-        const currentPositionInLevel = new Map<number, number>();
-        
-        // Aktualizujemy pozycję węzła start
-        startNode.position.y = 100 + 150 * (nodesPerLevel.get(0) || 1) / 2;
-        
-        // Tworzymy węzły dla każdego zdarzenia z uwzględnieniem poziomu
-        const eventNodes: Node[] = events.map((event) => {
-          const level = levelMap.get(event.name) || 0;
-          const nodesInThisLevel = nodesPerLevel.get(level) || 1;
-          
-          // Inicjalizujemy licznik pozycji dla tego poziomu jeśli potrzeba
-          if (!currentPositionInLevel.has(level)) {
-            currentPositionInLevel.set(level, 0);
-          }
-          
-          const positionInLevel = currentPositionInLevel.get(level) || 0;
-          currentPositionInLevel.set(level, positionInLevel + 1);
-          
-          // Rozmieszczamy węzły równomiernie w poziomie
-          const xSpacing = 700 / (nodesInThisLevel + 1);
-          const x = 100 + level * 150;
-          const y = xSpacing * (positionInLevel + 1);
-          
-          return {
-            id: event.name,
-            type: 'eventNode',
+    });
+
+
+    // --- Node Positioning (Simple Level-Based Layout) ---
+    const levelMap = new Map<string, number>();
+    const nodesToProcess = ['start'];
+    const processedForLevel = new Set<string>();
+    levelMap.set('start', 0);
+    processedForLevel.add('start');
+
+    let currentLevel = 0;
+    while(nodesToProcess.length > 0) {
+        const nodesAtCurrentLevel = [...nodesToProcess];
+        nodesToProcess.length = 0; // Clear for next level
+
+        nodesAtCurrentLevel.forEach(nodeName => {
+            const successors = successorsMap.get(nodeName) || [];
+            successors.forEach(succName => {
+                if (!processedForLevel.has(succName)) {
+                    // Check if all predecessors are at this level or lower
+                    const succPredecessors = predecessorsMap.get(succName) || [];
+                    if (succPredecessors.every(pred => levelMap.has(pred) && levelMap.get(pred)! <= currentLevel)) {
+                         levelMap.set(succName, currentLevel + 1);
+                         nodesToProcess.push(succName);
+                         processedForLevel.add(succName);
+                    }
+                }
+            });
+        });
+        currentLevel++;
+         // Sort nodes for next level processing based on ES for better layout consistency
+        nodesToProcess.sort((a, b) => (eventMap.get(a)?.earlyStart ?? 0) - (eventMap.get(b)?.earlyStart ?? 0));
+    }
+
+     // Ensure END node gets the highest level
+    const maxEventLevel = Math.max(0, ...Array.from(levelMap.values()).filter(l => l !== undefined && l !== Infinity));
+    levelMap.set('end', maxEventLevel + 1);
+
+
+    const nodesPerLevel = new Map<number, number>();
+    levelMap.forEach(level => {
+        nodesPerLevel.set(level, (nodesPerLevel.get(level) || 0) + 1);
+    });
+
+    const currentYPositionInLevel = new Map<number, number>();
+    const nodeLayout: Node[] = [];
+
+    // Create React Flow Nodes
+    Array.from(eventMap.keys()).sort((a, b) => (levelMap.get(a) ?? 0) - (levelMap.get(b) ?? 0)).forEach(nodeName => {
+        const nodeData = eventMap.get(nodeName)!;
+        const level = levelMap.get(nodeName) ?? 0;
+        const nodesInLevel = nodesPerLevel.get(level) || 1;
+        const yPosIndex = currentYPositionInLevel.get(level) || 0;
+        currentYPositionInLevel.set(level, yPosIndex + 1);
+
+        const x = 50 + level * 250; // Increased spacing
+        const y = 50 + yPosIndex * 150 + (level % 2) * 50; // Simple vertical distribution + stagger
+
+        nodeLayout.push({
+            id: nodeName,
+            type: 'eventNode', // Use your custom node type
             position: { x, y },
-            data: { ...event }
-          };
+            data: nodeData, // Pass calculated CPM data
+            sourcePosition: Position.Right,
+            targetPosition: Position.Left,
         });
-        
-        // Aktualizujemy węzeł końcowy
-        const endNode: Node = {
-          id: 'end',
-          type: 'eventNode',
-          position: { 
-            x: 100 + (maxLevel + 1) * 150, 
-            y: 100 + (maxLevel + 1) * 150
-          },
-          data: { name: 'KONIEC', duration: 0, earlyStart: totalDuration, earlyFinish: totalDuration, lateStart: totalDuration, lateFinish: totalDuration, timeReserve: 0 }
-        };
-        
-        // Łączymy wszystkie węzły
-        const allNodes = [startNode, ...eventNodes, endNode];
-        
-        // Tworzymy krawędzie na podstawie poprzedników
-        const allEdges: Edge[] = [];
-        
-        // Śledzenie, które węzły są poprzednikami innych
-        const hasDependents = new Set<string>();
-        
-        // Tworzymy krawędzie na podstawie zdefiniowanych poprzedników
-        events.forEach(event => {
-          if (event.predecessors && event.predecessors.trim() !== '') {
-            const predecessorsList = event.predecessors.split(',').map(p => p.trim());
-            predecessorsList.forEach(predecessor => {
-              allEdges.push({
-                id: `${predecessor}-${event.name}`,
-                source: predecessor,
-                target: event.name,
-              });
-              hasDependents.add(predecessor);
-            });
-          }
+    });
+
+
+    // --- Edge Creation ---
+    const allEdges: Edge[] = [];
+    eventMap.forEach((nodeData, nodeName) => {
+        const successors = successorsMap.get(nodeName) || [];
+        successors.forEach(succName => {
+            // Check if the target node exists before creating edge
+            if (eventMap.has(succName)) {
+                 // Determine if edge is on critical path
+                const sourceNode = eventMap.get(nodeName)!;
+                const targetNode = eventMap.get(succName)!;
+                const isCritical = sourceNode.timeReserve === 0 &&
+                                   targetNode.timeReserve === 0 &&
+                                   // Check if EF(source) === ES(target) for critical path condition
+                                   Math.abs(sourceNode.earlyFinish - targetNode.earlyStart) < 1e-9;
+
+                allEdges.push({
+                    id: `${nodeName}-${succName}`,
+                    source: nodeName,
+                    target: succName,
+                    animated: isCritical, // Animate critical path edges
+                    style: isCritical ? { stroke: 'red', strokeWidth: 2 } : { strokeWidth: 1 }, // Style critical path edges
+                });
+            } else {
+                console.warn(`Target node "${succName}" for edge from "${nodeName}" not found.`);
+            }
         });
-        
-        // Łączymy węzły bez poprzedników ze startem
-        events.forEach(event => {
-          if (!event.predecessors || event.predecessors.trim() === '') {
-            allEdges.push({
-              id: `start-${event.name}`,
-              source: 'start',
-              target: event.name,
-            });
-          }
-        });
-        
-        // Łączymy węzły bez zależnych z końcem
-        events.forEach(event => {
-          if (!hasDependents.has(event.name)) {
-            allEdges.push({
-              id: `${event.name}-end`,
-              source: event.name,
-              target: 'end',
-            });
-          }
-        });
-        
-        return { nodes: allNodes, edges: allEdges };
-      }, [events]);
+    });
+
+
+    return { nodes: nodeLayout, edges: allEdges };
+  }, [events]); // Recalculate when events change
 
   return (
-    <div className="w-full h-[500px] border rounded-lg bg-white">
-      <ReactFlow 
-        nodes={nodes} 
+    <div className="w-full h-[700px] border rounded-lg bg-gray-50 dark:bg-black"> {}
+      <ReactFlow
+        nodes={nodes}
         edges={edges}
         nodeTypes={{
-            eventNode: EventNode,
-        }}>
+          eventNode: EventNode, 
+        }}
+        fitView
+        fitViewOptions={{ padding: 0.2 }}
+      >
         <Controls />
       </ReactFlow>
     </div>

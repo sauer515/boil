@@ -32,7 +32,7 @@ export default function EventForm({ onAddEvent, onGenerateGraph }: EventFormProp
 
   return (
     <div className="flex flex-col items-center">
-    <form onSubmit={handleSubmit(onSubmit)} className="p-4 bg-blue-100 rounded-lg shadow-md w-full">
+    <form onSubmit={handleSubmit(onSubmit)} className="p-4 bg-blue-100 dark:bg-red-600 rounded-lg shadow-md w-full">
       <label className="block mb-2">
         Nazwa zdarzenia:
         <input
@@ -40,7 +40,7 @@ export default function EventForm({ onAddEvent, onGenerateGraph }: EventFormProp
           {...register("name")}
           className="block w-full p-2 border rounded-md"
         />
-        {errors.name && <p className="text-red-500">{errors.name.message}</p>}
+        {errors.name && <p className="text-red-500 dark:text-yellow-500">{errors.name.message}</p>}
       </label>
 
       <label className="block mb-2">
@@ -50,7 +50,7 @@ export default function EventForm({ onAddEvent, onGenerateGraph }: EventFormProp
           {...register("duration", { valueAsNumber: true })}
           className="block w-full p-2 border rounded-md"
         />
-        {errors.duration && <p className="text-red-500">{errors.duration.message}</p>}
+        {errors.duration && <p className="text-red-500 dark:text-yellow-500">{errors.duration.message}</p>}
       </label>
 
       <label className="block mb-4">
@@ -62,11 +62,11 @@ export default function EventForm({ onAddEvent, onGenerateGraph }: EventFormProp
         />
       </label>
 
-      <button type="submit" className="hover:bg-blue-700 bg-blue-500 text-white px-4 py-2 rounded-md">
+      <button type="submit" className="hover:bg-blue-700 dark:hover:bg-yellow-400 bg-blue-500 dark:bg-yellow-300 text-white dark:text-black px-4 py-2 rounded-md">
         Dodaj zdarzenie
       </button>
     </form>
-    <button onClick={onGenerateGraph} className="hover:bg-blue-700 ml-3 mt-2 bg-blue-500 text-white px-4 py-2 rounded-md">
+    <button onClick={onGenerateGraph} className="hover:bg-blue-700 ml-3 mt-2 dark:hover:bg-yellow-400 bg-blue-500 dark:bg-yellow-300 text-white dark:text-black px-4 py-2 rounded-md">
       Generuj graf
     </button>
     </div>
