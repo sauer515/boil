@@ -44,7 +44,7 @@ export default function EventForm({ onAddEvent, onGenerateGraph }: EventFormProp
       </label>
 
       <label className="block mb-2">
-        Czas wykonania:
+        Czas wykonania (w dniach):
         <input
           type="number"
           {...register("duration", { valueAsNumber: true })}

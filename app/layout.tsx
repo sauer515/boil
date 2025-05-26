@@ -1,17 +1,19 @@
+// layout.tsx
+
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Press_Start_2P } from "next/font/google";
 import "./globals.css";
 import ThemeProvider from "../components/ThemeProvider";
+import Sidebar from "../components/Sidebar";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
+const fontPressStart = Press_Start_2P({
+  variable: "--font-press-start",
   subsets: ["latin"],
+  display: "swap",
+  weight: "400",
 });
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "Create Next App",
@@ -20,20 +22,17 @@ export const metadata: Metadata = {
 
 export default function RootLayout({
   children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+}: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" suppressHydrationWarning>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} ${fontPressStart.variable} font-press-start antialiased`}
       >
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="system"
-          enableSystem
-          >
-        {children}
+        <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
+          <div className="flex">
+            <Sidebar />
+            <main className="ml-60 w-full p-6">{children}</main>
+          </div>
         </ThemeProvider>
       </body>
     </html>

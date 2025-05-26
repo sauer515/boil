@@ -2,6 +2,7 @@ import React, { useMemo } from "react";
 import ReactFlow, { Node, Edge, Controls, Position } from "reactflow";
 import "reactflow/dist/style.css";
 import EventNode from "./EventNode";
+import calculateCPM from "../app/utils/cpm"; // Adjust the import path as needed
 
 interface EventData {
   name: string;

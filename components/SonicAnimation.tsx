@@ -12,7 +12,7 @@ export default function SonicAnimation() {
     useEffect(() => {
         const handleMove = () => {
             setPosition((prev) => {
-              const maxWidth = window.innerWidth-150; // Adjust for the width of the image
+              const maxWidth = window.innerWidth-150-60; // Adjust for the width of the image
               const next = prev + 10 * direction;
               if (next > maxWidth) {
                 setDirection(-1);
@@ -38,9 +38,9 @@ export default function SonicAnimation() {
         }}
       >
         {theme === "dark" ? 
-        <Image src={shadowRunning} alt="Sonic Running" width={150} height={150} unoptimized />
+        <Image src={shadowRunning} alt="Sonic Running" width={250} height={250} unoptimized />
         :
-        <Image src={sonicRunning} alt="Sonic Running" width={100} height={100} unoptimized className="invert" />
+        <Image src={sonicRunning} alt="Sonic Running" width={100} height={100} unoptimized />
         }
         
       </div>
