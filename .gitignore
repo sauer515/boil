@@ -40,3 +40,4 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 public/pycharm-2025.1.exe
+pycharm-2025.1.exe
