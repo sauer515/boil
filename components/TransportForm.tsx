@@ -5,7 +5,7 @@ import Image from "next/image";
 import { useTheme } from "next-themes";
 
 export default function TransportForm({ onSubmit }: { onSubmit: (suppliers: number, recipients: number) => void }) {
-  const { theme, setTheme } = useTheme();
+  const { theme } = useTheme();
   const [suppliers, setSuppliers] = useState(0);
   const [recipients, setRecipients] = useState(0);
 
